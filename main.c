@@ -25,8 +25,7 @@ int main(void) {
                   "3) Espelhar imagem horizontal\n "\
                   "4) Espelhar imagem vertical\n "\
                   "5) Escalar cinza\n "\
-                  "6) Copiar imagem\n"\
-                  "0) Sair \n";
+                  "6) Copiar imagem\n";
 
     FILE *file;
     char input_filename[MAX], output_filename[MAX];
@@ -50,42 +49,40 @@ int main(void) {
     }
 
     int op;
-    do {
-        printf("%s\n-> ", menu);
-        scanf("%d", &op);
-        switch (op) {
-            case 1:
-                rotate_image_clockwise(data, out);
-                break;
-            case 2:
-                rotate_image_anticlockwise(data, out);
-                break;
-            case 3:
-                flip_image_horizontally(data, out);
-                break;
-            case 4:
-                flip_image_vertically(data, out);
-                break;
-            case 5:
-                gray_scalar(data, out);
-                break;
-            case 6:
-                copy_image(input_filename, data, out);
-                break;
-            default:
-                printf("Operação inválida!\n");
-                break;
-        }
-    } while (op != 0);
+    printf("%s\n-> ", menu);
+    scanf("%d", &op);
+    switch (op) {
+        case 1:
+            rotate_image_clockwise(data, out);
+            break;
+        case 2:
+            rotate_image_anticlockwise(data, out);
+            break;
+        case 3:
+            flip_image_horizontally(data, out);
+            break;
+        case 4:
+            flip_image_vertically(data, out);
+            break;
+        case 5:
+            gray_scalar(data, out);
+            break;
+        case 6:
+            copy_image(input_filename, data, out);
+            break;
+        default:
+            printf("Operação inválida!\n");
+            break;
+    }
 
-    // end reading
-    fclose(file);
+    fclose(file); // end reading
 
-    file = fopen(output_filename, "wb");
-    write_image(file, out);
+    if (op != 6) {
+        file = fopen(output_filename, "wb");
+        write_image(file, out);
 
-    // end writing
-    fclose(file);
+        fclose(file); // end writing
+    }
 
     return 0;
 }
@@ -139,8 +136,28 @@ void prepare_to_read(png_structp png, png_infop info) {
 
 png_bytepp read_image(FILE *file) {
     png_structp png = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
-    if(!png) 
-        printf("Erro"); // TODO: handle error
+    if(png == NULL) {
+        printf("ERRO: creating read_struct");
+        fclose(file);
+        exit(1);
+    }
+
+    // Check if file is png
+    char sig[8]; // 8 is the maximum size that can be checked
+    // Read in some of the signature bytes 
+    if (fread(sig, 1, 8, file) != 8)
+        exit(1);
+
+    // png_sig_cmp() returns zero if the image is a PNG and nonzero if it isn't a PNG.
+    if (png_sig_cmp(sig, 0, 8)) {
+        printf("Formato de arquivo não suportado!\n");
+        exit(1);
+    }
+    // end check
+
+    // let libpng know that there are some bytes missing from the start of the file
+    png_set_sig_bytes(png, 8);
+
     // Allocate/initialize the image information data.
     png_infop info = png_create_info_struct(png);
     if (info == NULL) {
@@ -185,6 +202,11 @@ png_bytepp read_image(FILE *file) {
 
 void write_image(FILE *file, png_bytepp data) {
     png_structp png = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
+    if (png == NULL) {
+        fclose(file);
+        printf("ERRO: creating write_struct\n");
+        exit(1);
+    }
     // Allocate/initialize the image information data.
     png_infop info = png_create_info_struct(png);
     if (info == NULL) {
@@ -298,6 +320,9 @@ void gray_scalar(png_bytepp data, png_bytepp out) {
     }
 }
 
+/*
+ * Return the filename concatenated with "_copia.png"
+ */
 void copy_image(char filename[], png_bytepp data, png_bytepp out) {
     for (int y = 0; y < height; y++) {
         png_bytep row = data[y];
@@ -310,8 +335,7 @@ void copy_image(char filename[], png_bytepp data, png_bytepp out) {
     }
     char *name = strtok(filename, ".");
     strcat(name, "_copia.png");
-
     FILE *file = fopen(name, "wb");
     write_image(file, out);
-    fclose(file); 
+    fclose(file);
 }
