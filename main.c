@@ -20,8 +20,8 @@ void copy_image(char filename[], png_bytepp data, png_bytepp out);
 int main(void) {
     png_bytepp data, out = NULL;
     char *menu = "Digitação a operação à ser realizada na imagem:\n "\
-                  "1) Rotacionar imagem sentido horario\n "\
-                  "2) Rotacionar imagem sentido anti-horario\n "\
+                  "1) Rotacionar imagem 90º sentido horario\n "\
+                  "2) Rotacionar imagem 90º sentido anti-horario\n "\
                   "3) Espelhar imagem horizontal\n "\
                   "4) Espelhar imagem vertical\n "\
                   "5) Escalar cinza\n "\
@@ -30,7 +30,7 @@ int main(void) {
     FILE *file;
     char input_filename[MAX], output_filename[MAX];
     while (1) {
-        printf("Digite o nome do arquivo: ");
+        printf("Digite o nome do arquivo da imagem: ");
         get_user_input(input_filename, MAX);
         file = fopen(input_filename, "rb");
         if (file == NULL)
@@ -38,7 +38,7 @@ int main(void) {
         else
             break;
     }
-    printf("Digite o nome do arquivo de saida: ");
+    printf("Digite o nome do arquivo de saida da imagem: ");
     get_user_input(output_filename, MAX);
 
     data = read_image(file);
