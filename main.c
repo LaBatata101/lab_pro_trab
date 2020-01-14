@@ -2,23 +2,27 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <jpeglib.h>
 
 #define MAX 240
 
 static int height = 0, width = 0, rowbytes_size = 0;
 
-png_bytepp read_image(FILE *file);
+int is_png(char *filename);
+png_bytepp read_png_file(FILE *file);
+unsigned char **read_jpeg_file(FILE *file);
 void get_user_input(char *str, int size);
-void write_image(FILE *file, png_bytepp data);
-void rotate_image_clockwise(png_bytepp data, png_bytepp out);
-void rotate_image_anticlockwise(png_bytepp data, png_bytepp out);
-void flip_image_vertically(png_bytepp data, png_bytepp out);
-void flip_image_horizontally(png_bytepp data, png_bytepp out);
-void gray_scalar(png_bytepp data, png_bytepp out);
-void copy_image(char filename[], png_bytepp data, png_bytepp out);
+void write_png_file(FILE *file, png_bytepp data);
+void write_jpeg_file(FILE *file, unsigned char **data);
+void rotate_image_clockwise(png_bytepp data, png_bytepp out, int bytes_per_pixel);
+void rotate_image_anticlockwise(png_bytepp data, png_bytepp out, int bytes_per_pixel);
+void flip_image_vertically(png_bytepp data, png_bytepp out, int bytes_per_pixel);
+void flip_image_horizontally(png_bytepp data, png_bytepp out, int bytes_per_pixel);
+void gray_scalar(png_bytepp data, png_bytepp out, int bytes_per_pixel);
+void copy_image(char filename[], png_bytepp data, png_bytepp out, int bytes_per_pixel);
 
 int main(void) {
-    png_bytepp data, out = NULL;
+    unsigned char  **data, **out = NULL;
     char *menu = "Digitação a operação à ser realizada na imagem:\n "\
                   "1) Rotacionar imagem 90º sentido horario\n "\
                   "2) Rotacionar imagem 90º sentido anti-horario\n "\
@@ -41,11 +45,19 @@ int main(void) {
     printf("Digite o nome do arquivo de saida da imagem: ");
     get_user_input(output_filename, MAX);
 
-    data = read_image(file);
-    // allocate space for the output image
-    out = (png_bytep*)malloc(sizeof(png_bytep) * height);
-    for(int y = 0; y < height; y++) {
-        out[y] = (png_byte*)malloc(rowbytes_size);
+    if (is_png(input_filename)) {
+        data = read_png_file(file);
+        // allocate space for the output image
+        out = (png_bytep*)malloc(sizeof(png_bytep) * height);
+        for(int y = 0; y < height; y++) {
+            out[y] = (png_byte*)malloc(rowbytes_size);
+        }
+    } else {
+        data = read_jpeg_file(file);
+        out = (unsigned char **) malloc(height*sizeof(unsigned char **));
+        for (int i = 0; i < height; i++){
+            out[i] = malloc(width*3);
+        }
     }
 
     int op;
@@ -53,22 +65,22 @@ int main(void) {
     scanf("%d", &op);
     switch (op) {
         case 1:
-            rotate_image_clockwise(data, out);
+            rotate_image_clockwise(data, out, (is_png(input_filename))? 4 : 3);
             break;
         case 2:
-            rotate_image_anticlockwise(data, out);
+            rotate_image_anticlockwise(data, out, (is_png(input_filename))? 4 : 3);
             break;
         case 3:
-            flip_image_horizontally(data, out);
+            flip_image_horizontally(data, out, (is_png(input_filename))? 4 : 3);
             break;
         case 4:
-            flip_image_vertically(data, out);
+            flip_image_vertically(data, out, (is_png(input_filename))? 4 : 3);
             break;
         case 5:
-            gray_scalar(data, out);
+            gray_scalar(data, out, (is_png(input_filename))? 4 : 3);
             break;
         case 6:
-            copy_image(input_filename, data, out);
+            copy_image(input_filename, data, out, (is_png(input_filename))? 4 : 3);
             break;
         default:
             printf("Operação inválida!\n");
@@ -79,11 +91,27 @@ int main(void) {
 
     if (op != 6) {
         file = fopen(output_filename, "wb");
-        write_image(file, out);
+        if (is_png(input_filename)){
+            write_png_file(file, out);
+        } else {
+            write_jpeg_file(file, out);
+        }
 
         fclose(file); // end writing
     }
 
+    return 0;
+}
+
+const char *get_filename_ext(const char *filename) {
+    const char *dot = strrchr(filename, '.');
+    if(!dot || dot == filename) return "";
+    return dot + 1;
+}
+
+int is_png(char *filename) {
+    if (!strcmp(get_filename_ext(filename), "png"))
+        return 1;
     return 0;
 }
 
@@ -134,26 +162,13 @@ void prepare_to_read(png_structp png, png_infop info) {
     png_read_update_info(png, info);
 }
 
-png_bytepp read_image(FILE *file) {
+png_bytepp read_png_file(FILE *file) {
     png_structp png = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
     if(png == NULL) {
         printf("ERRO: creating read_struct");
         fclose(file);
         exit(1);
     }
-
-    // Check if file is png
-    char sig[8]; // 8 is the maximum size that can be checked
-    // Read in some of the signature bytes 
-    if (fread(sig, 1, 8, file) != 8)
-        exit(1);
-
-    // png_sig_cmp() returns zero if the image is a PNG and nonzero if it isn't a PNG.
-    if (png_sig_cmp(sig, 0, 8)) {
-        printf("Formato de arquivo não suportado!\n");
-        exit(1);
-    }
-    // end check
 
     // let libpng know that there are some bytes missing from the start of the file
     png_set_sig_bytes(png, 8);
@@ -200,7 +215,7 @@ png_bytepp read_image(FILE *file) {
     return row_pointers;
 }
 
-void write_image(FILE *file, png_bytepp data) {
+void write_png_file(FILE *file, png_bytepp data) {
     png_structp png = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
     if (png == NULL) {
         fclose(file);
@@ -257,65 +272,65 @@ void get_user_input(char *str, int size) {
     str = strtok(str, "\n");
 }
 
-void rotate_image_clockwise(png_bytepp data, png_bytepp out) {
+void rotate_image_clockwise(png_bytepp data, png_bytepp out, int bytes_per_pixel) {
     for (int y = 0; y < height; y++) {
         png_bytep row = data[y];
         for (int x = 0; x < width; x++) {
-            png_bytep pixel = &(row[x*4]);
-            png_bytep out_pixel = &(out[x][(height-y-1)*4]);
+            png_bytep pixel = &(row[x*bytes_per_pixel]);
+            png_bytep out_pixel = &(out[x][(height-y-1)*bytes_per_pixel]);
 
-            copy_array(out_pixel, pixel, 4);
+            copy_array(out_pixel, pixel, bytes_per_pixel);
         }
     }
 }
 
-void rotate_image_anticlockwise(png_bytepp data, png_bytepp out) {
+void rotate_image_anticlockwise(png_bytepp data, png_bytepp out, int bytes_per_pixel) {
     for (int y = 0; y < height; y++) {
         png_bytep row = data[y];
         for (int x = 0; x < width; x++) {
-            png_bytep pixel = &(row[x*4]);
-            png_bytep out_pixel = &(out[width-x-1][y*4]);
+            png_bytep pixel = &(row[x*bytes_per_pixel]);
+            png_bytep out_pixel = &(out[width-x-1][y*bytes_per_pixel]);
 
-            copy_array(out_pixel, pixel, 4);
+            copy_array(out_pixel, pixel, bytes_per_pixel);
         }
     }
 }
 
-void flip_image_horizontally(png_bytepp data, png_bytepp out) {
+void flip_image_horizontally(png_bytepp data, png_bytepp out, int bytes_per_pixel) {
     for (int y = 0; y < height; y++) {
         png_bytep row = data[y];
         for (int x = 0; x < width; x++) {
-            png_bytep pixel = &(row[x*4]);
-            png_bytep out_pixel = &(out[y][(width-x-1)*4]);
+            png_bytep pixel = &(row[x*bytes_per_pixel]);
+            png_bytep out_pixel = &(out[y][(width-x-1)*bytes_per_pixel]);
 
-            copy_array(out_pixel, pixel, 4);
+            copy_array(out_pixel, pixel, bytes_per_pixel);
         }
     }
 }
 
-void flip_image_vertically(png_bytepp data, png_bytepp out) {
+void flip_image_vertically(png_bytepp data, png_bytepp out, int bytes_per_pixel) {
     for (int y = 0; y < height; y++) {
         png_bytep row = data[y];
         for (int x = 0; x < width; x++) {
-            png_bytep pixel = &(row[x*4]);
-            png_bytep out_pixel = &(out[height-y-1][x*4]);
+            png_bytep pixel = &(row[x*bytes_per_pixel]);
+            png_bytep out_pixel = &(out[height-y-1][x*bytes_per_pixel]);
 
-            copy_array(out_pixel, pixel, 4);
+            copy_array(out_pixel, pixel, bytes_per_pixel);
         }
     }
 }
 
-void gray_scalar(png_bytepp data, png_bytepp out) {
+void gray_scalar(png_bytepp data, png_bytepp out, int bytes_per_pixel) {
     for (int y = 0; y < height; y++) {
         png_bytep row = data[y];
         for (int x = 0; x < width; x++) {
-            png_bytep pixel = &(row[x*4]);
-            png_bytep out_pixel = &(out[y][x*4]);
+            png_bytep pixel = &(row[x*bytes_per_pixel]);
+            png_bytep out_pixel = &(out[y][x*bytes_per_pixel]);
 
             png_byte gray = pixel[0]*0.299 + pixel[1]*0.587 + pixel[2]*0.114;
             memset(pixel, gray, 3);
 
-            copy_array(out_pixel, pixel, 4);
+            copy_array(out_pixel, pixel, bytes_per_pixel);
         }
     }
 }
@@ -323,19 +338,107 @@ void gray_scalar(png_bytepp data, png_bytepp out) {
 /*
  * Return the filename concatenated with "_copia.png"
  */
-void copy_image(char filename[], png_bytepp data, png_bytepp out) {
+void copy_image(char filename[], png_bytepp data, png_bytepp out, int bytes_per_pixel) {
     for (int y = 0; y < height; y++) {
         png_bytep row = data[y];
         for (int x = 0; x < width; x++) {
-            png_bytep pixel = &(row[x*4]);
-            png_bytep out_pixel = &(out[y][x*4]);
+            png_bytep pixel = &(row[x*bytes_per_pixel]);
+            png_bytep out_pixel = &(out[y][x*bytes_per_pixel]);
 
-            copy_array(out_pixel, pixel, 4);
+            copy_array(out_pixel, pixel, bytes_per_pixel);
         }
     }
     char *name = strtok(filename, ".");
     strcat(name, "_copia.png");
     FILE *file = fopen(name, "wb");
-    write_image(file, out);
+    write_png_file(file, out);
     fclose(file);
+}
+
+unsigned char **read_jpeg_file(FILE *file) {
+	struct jpeg_decompress_struct cinfo;
+	struct jpeg_error_mgr jerr;
+
+	JSAMPROW row_pointer[1];
+    unsigned char *row_image = NULL;
+	
+	unsigned long location = 0;
+	
+	cinfo.err = jpeg_std_error(&jerr);
+
+	jpeg_create_decompress(&cinfo);
+
+	jpeg_stdio_src(&cinfo, file);
+
+	jpeg_read_header(&cinfo, TRUE);
+    width = cinfo.image_width;
+    height = cinfo.image_height;
+
+	jpeg_start_decompress(&cinfo);
+
+	row_image = (unsigned char*)malloc(cinfo.output_width*cinfo.output_height*cinfo.num_components);
+	row_pointer[0] = (unsigned char *)malloc(cinfo.output_width*cinfo.num_components);
+
+	while(cinfo.output_scanline < cinfo.image_height) {
+		jpeg_read_scanlines(&cinfo, row_pointer, 1);
+		for(int i = 0; i < cinfo.image_width*cinfo.num_components; i++) {
+            row_image[location++] = row_pointer[0][i];
+        }
+	}
+
+    static unsigned char **array_2d = NULL;
+    array_2d = (unsigned char **) malloc(cinfo.output_height*sizeof(unsigned char **));
+    for (int i = 0; i < height; i++){
+        array_2d[i] = malloc(cinfo.output_width*cinfo.num_components);
+    }
+
+    // transform raw_image(1D array) to a 2D array
+    unsigned long count = 0;
+    for (int i = 0; i < height; i++)
+        for (int j = 0; j < width*cinfo.num_components; j++) {
+            array_2d[i][j] = row_image[count++];
+        }
+
+	jpeg_finish_decompress(&cinfo);
+	jpeg_destroy_decompress(&cinfo);
+	free(row_pointer[0]);
+
+	return array_2d;
+}
+
+void write_jpeg_file(FILE *file, unsigned char **out) {
+	struct jpeg_compress_struct cinfo;
+	struct jpeg_error_mgr jerr;
+	
+	JSAMPROW row_pointer[1];
+	
+	cinfo.err = jpeg_std_error( &jerr );
+	jpeg_create_compress(&cinfo);
+	jpeg_stdio_dest(&cinfo, file);
+
+	cinfo.image_width = width;	
+	cinfo.image_height = height;
+	cinfo.input_components = 3;   /* or 1 for GRACYSCALE images */
+	cinfo.in_color_space = JCS_RGB; /* or JCS_GRAYSCALE for grayscale images */
+
+	jpeg_set_defaults(&cinfo);
+
+	jpeg_start_compress(&cinfo, TRUE);
+    unsigned char *temp = NULL;
+	temp = (unsigned char*)malloc(cinfo.image_width*cinfo.image_height*cinfo.num_components);
+
+    // transform out(2D array) to a 1D array
+    unsigned long count = 0;
+    for (int i = 0; i < cinfo.image_height; i++)
+        for (int j = 0; j < cinfo.image_width*cinfo.num_components; j++) {
+            temp[count++] = out[i][j];
+        }
+
+	while(cinfo.next_scanline < cinfo.image_height) {
+		row_pointer[0] = &temp[cinfo.next_scanline*cinfo.image_width*cinfo.input_components];
+		jpeg_write_scanlines(&cinfo, row_pointer, 1);
+	}
+
+	jpeg_finish_compress(&cinfo);
+	jpeg_destroy_compress(&cinfo);
 }
