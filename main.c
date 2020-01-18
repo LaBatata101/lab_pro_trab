@@ -19,7 +19,8 @@ void rotate_image_anticlockwise(png_bytepp data, png_bytepp out, int bytes_per_p
 void flip_image_vertically(png_bytepp data, png_bytepp out, int bytes_per_pixel);
 void flip_image_horizontally(png_bytepp data, png_bytepp out, int bytes_per_pixel);
 void gray_scalar(png_bytepp data, png_bytepp out, int bytes_per_pixel);
-void copy_image(char filename[], png_bytepp data, png_bytepp out, int bytes_per_pixel);
+void copy_image(char filename[], char out_filename[],
+        png_bytepp data, png_bytepp out, int bytes_per_pixel);
 
 int main(void) {
     unsigned char  **data, **out = NULL;
@@ -47,16 +48,17 @@ int main(void) {
 
     if (is_png(input_filename)) {
         data = read_png_file(file);
-        // allocate space for the output image
+        // allocate space for the PNG output image
         out = (png_bytep*)malloc(sizeof(png_bytep) * height);
         for(int y = 0; y < height; y++) {
             out[y] = (png_byte*)malloc(rowbytes_size);
         }
     } else {
         data = read_jpeg_file(file);
+        // allocate space for the JPEG output image
         out = (unsigned char **) malloc(height*sizeof(unsigned char **));
-        for (int i = 0; i < height; i++){
-            out[i] = malloc(width*3);
+        for (int y = 0; y < height; y++){
+            out[y] = malloc(width*3);
         }
     }
 
@@ -80,7 +82,7 @@ int main(void) {
             gray_scalar(data, out, (is_png(input_filename))? 4 : 3);
             break;
         case 6:
-            copy_image(input_filename, data, out, (is_png(input_filename))? 4 : 3);
+            copy_image(input_filename, output_filename, data, out, (is_png(input_filename))? 4 : 3);
             break;
         default:
             printf("Operação inválida!\n");
@@ -89,22 +91,23 @@ int main(void) {
 
     fclose(file); // end reading
 
-    if (op != 6) {
-        file = fopen(output_filename, "wb");
-        if (is_png(input_filename)){
-            write_png_file(file, out);
-        } else {
-            write_jpeg_file(file, out);
-        }
-
-        fclose(file); // end writing
+    // start writing
+    file = fopen(output_filename, "wb");
+    if (is_png(input_filename)){
+        write_png_file(file, out);
+    } else {
+        write_jpeg_file(file, out);
     }
+    fclose(file); // end writing
 
     return 0;
 }
 
-const char *get_filename_ext(const char *filename) {
-    const char *dot = strrchr(filename, '.');
+/*
+ * Return the file extension.
+ */
+char *get_filename_ext(const char *filename) {
+    char *dot = strrchr(filename, '.');
     if(!dot || dot == filename) return "";
     return dot + 1;
 }
@@ -116,7 +119,7 @@ int is_png(char *filename) {
 }
 
 /* 
- * Initalize all things needed before reading the image
+ * Initalize all things needed before reading the PNG image
  *
  */
 void prepare_to_read(png_structp png, png_infop info) {
@@ -162,6 +165,9 @@ void prepare_to_read(png_structp png, png_infop info) {
     png_read_update_info(png, info);
 }
 
+/*
+ * Read a PNG image and return a 2D matrix containing the image pixels
+ */
 png_bytepp read_png_file(FILE *file) {
     png_structp png = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
     if(png == NULL) {
@@ -169,9 +175,6 @@ png_bytepp read_png_file(FILE *file) {
         fclose(file);
         exit(1);
     }
-
-    // let libpng know that there are some bytes missing from the start of the file
-    png_set_sig_bytes(png, 8);
 
     // Allocate/initialize the image information data.
     png_infop info = png_create_info_struct(png);
@@ -215,6 +218,9 @@ png_bytepp read_png_file(FILE *file) {
     return row_pointers;
 }
 
+/*
+ * Write the PNG image contents to disk
+ */
 void write_png_file(FILE *file, png_bytepp data) {
     png_structp png = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
     if (png == NULL) {
@@ -272,6 +278,10 @@ void get_user_input(char *str, int size) {
     str = strtok(str, "\n");
 }
 
+/*
+ * bytes_per_pixel: the size of bytes per pixel 3 for JPEG(RGB) or 4 for PNG(RGBA), the same is
+ * valid for other functions with this parameter
+ */
 void rotate_image_clockwise(png_bytepp data, png_bytepp out, int bytes_per_pixel) {
     for (int y = 0; y < height; y++) {
         png_bytep row = data[y];
@@ -320,6 +330,9 @@ void flip_image_vertically(png_bytepp data, png_bytepp out, int bytes_per_pixel)
     }
 }
 
+/*
+ * Transform all image pixels to gray
+ */
 void gray_scalar(png_bytepp data, png_bytepp out, int bytes_per_pixel) {
     for (int y = 0; y < height; y++) {
         png_bytep row = data[y];
@@ -336,9 +349,10 @@ void gray_scalar(png_bytepp data, png_bytepp out, int bytes_per_pixel) {
 }
 
 /*
- * Return the filename concatenated with "_copia.png"
+ * Return the filename concatenated with "_copia.(png or jpg)"
  */
-void copy_image(char filename[], png_bytepp data, png_bytepp out, int bytes_per_pixel) {
+void copy_image(char filename[], char out_filename[],
+        png_bytepp data, png_bytepp out, int bytes_per_pixel) {
     for (int y = 0; y < height; y++) {
         png_bytep row = data[y];
         for (int x = 0; x < width; x++) {
@@ -348,13 +362,20 @@ void copy_image(char filename[], png_bytepp data, png_bytepp out, int bytes_per_
             copy_array(out_pixel, pixel, bytes_per_pixel);
         }
     }
-    char *name = strtok(filename, ".");
-    strcat(name, "_copia.png");
-    FILE *file = fopen(name, "wb");
-    write_png_file(file, out);
-    fclose(file);
+    char *name = NULL;
+    if (is_png(filename)) {
+        name = strtok(filename, ".");
+        strcat(name, "_copia.png");
+    } else {
+        name = strtok(filename, ".");
+        strcat(name, "_copia.jpg");
+    }
+    memcpy(out_filename, name, MAX);
 }
 
+/*
+ * Read a JPEG image and return a 2D matrix containing the image pixels
+ */
 unsigned char **read_jpeg_file(FILE *file) {
 	struct jpeg_decompress_struct cinfo;
 	struct jpeg_error_mgr jerr;
@@ -366,8 +387,10 @@ unsigned char **read_jpeg_file(FILE *file) {
 	
 	cinfo.err = jpeg_std_error(&jerr);
 
+    // Allocate and initialize a JPEG decompression object
 	jpeg_create_decompress(&cinfo);
 
+    // specify data source
 	jpeg_stdio_src(&cinfo, file);
 
 	jpeg_read_header(&cinfo, TRUE);
@@ -376,9 +399,11 @@ unsigned char **read_jpeg_file(FILE *file) {
 
 	jpeg_start_decompress(&cinfo);
 
-	row_image = (unsigned char*)malloc(cinfo.output_width*cinfo.output_height*cinfo.num_components);
+    // alocate space for the image data
+	row_image = (unsigned char *)malloc(cinfo.output_width*cinfo.output_height*cinfo.num_components);
 	row_pointer[0] = (unsigned char *)malloc(cinfo.output_width*cinfo.num_components);
 
+    // Read the contents of the image
 	while(cinfo.output_scanline < cinfo.image_height) {
 		jpeg_read_scanlines(&cinfo, row_pointer, 1);
 		for(int i = 0; i < cinfo.image_width*cinfo.num_components; i++) {
@@ -386,6 +411,7 @@ unsigned char **read_jpeg_file(FILE *file) {
         }
 	}
 
+    // allocate space for the 2d array
     static unsigned char **array_2d = NULL;
     array_2d = (unsigned char **) malloc(cinfo.output_height*sizeof(unsigned char **));
     for (int i = 0; i < height; i++){
@@ -400,19 +426,24 @@ unsigned char **read_jpeg_file(FILE *file) {
         }
 
 	jpeg_finish_decompress(&cinfo);
+    // deallocate JPEG compression object
 	jpeg_destroy_decompress(&cinfo);
 	free(row_pointer[0]);
 
 	return array_2d;
 }
 
+/*
+ * Write the JPEG image contents to disk
+ */
 void write_jpeg_file(FILE *file, unsigned char **out) {
 	struct jpeg_compress_struct cinfo;
 	struct jpeg_error_mgr jerr;
 	
 	JSAMPROW row_pointer[1];
 	
-	cinfo.err = jpeg_std_error( &jerr );
+	cinfo.err = jpeg_std_error(&jerr);
+    // initialize the JPEG compression object
 	jpeg_create_compress(&cinfo);
 	jpeg_stdio_dest(&cinfo, file);
 
@@ -421,6 +452,7 @@ void write_jpeg_file(FILE *file, unsigned char **out) {
 	cinfo.input_components = 3;   /* or 1 for GRACYSCALE images */
 	cinfo.in_color_space = JCS_RGB; /* or JCS_GRAYSCALE for grayscale images */
 
+    // use the library's routine to set default compression parameters.
 	jpeg_set_defaults(&cinfo);
 
 	jpeg_start_compress(&cinfo, TRUE);
@@ -434,11 +466,13 @@ void write_jpeg_file(FILE *file, unsigned char **out) {
             temp[count++] = out[i][j];
         }
 
+    // write the pixels to file
 	while(cinfo.next_scanline < cinfo.image_height) {
 		row_pointer[0] = &temp[cinfo.next_scanline*cinfo.image_width*cinfo.input_components];
 		jpeg_write_scanlines(&cinfo, row_pointer, 1);
 	}
 
 	jpeg_finish_compress(&cinfo);
+    // release JPEG compression object
 	jpeg_destroy_compress(&cinfo);
 }
