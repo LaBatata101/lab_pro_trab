@@ -268,6 +268,9 @@ void write_png_file(FILE *file, png_bytepp data) {
     png_destroy_write_struct(&png, &info);
 }
 
+/*
+ * Copy the src arry into dest array.
+ */
 void copy_array(png_bytep dest, png_bytep src, int size) {
     for (int i = 0; i < size; i++)
         dest[i] = src[i];
@@ -281,6 +284,11 @@ void get_user_input(char *str, int size) {
 /*
  * bytes_per_pixel: the size of bytes per pixel 3 for JPEG(RGB) or 4 for PNG(RGBA), the same is
  * valid for other functions with this parameter
+ *
+ * Example:
+ *    px1 px2 px3     px7 px4 px1
+ *    px4 px5 px6 --> px8 px5 px2 
+ *    px7 px8 px9     px9 px6 px3
  */
 void rotate_image_clockwise(png_bytepp data, png_bytepp out, int bytes_per_pixel) {
     for (int y = 0; y < height; y++) {
@@ -294,6 +302,13 @@ void rotate_image_clockwise(png_bytepp data, png_bytepp out, int bytes_per_pixel
     }
 }
 
+/*
+ * Example: 
+ *   px1 px2 px3     px3 px6 px9 
+ *   px4 px5 px6 --> px2 px5 px8
+ *   px7 px8 px9     px1 px4 px7
+ *
+ */
 void rotate_image_anticlockwise(png_bytepp data, png_bytepp out, int bytes_per_pixel) {
     for (int y = 0; y < height; y++) {
         png_bytep row = data[y];
@@ -306,6 +321,13 @@ void rotate_image_anticlockwise(png_bytepp data, png_bytepp out, int bytes_per_p
     }
 }
 
+/*
+ * Example: 
+ *  px1 px2 px3     px3 px2 px1
+ *  px4 px5 px6 --> px6 px5 px4
+ *  px7 px8 px9     px9 px8 px7
+ *
+ */
 void flip_image_horizontally(png_bytepp data, png_bytepp out, int bytes_per_pixel) {
     for (int y = 0; y < height; y++) {
         png_bytep row = data[y];
@@ -318,6 +340,13 @@ void flip_image_horizontally(png_bytepp data, png_bytepp out, int bytes_per_pixe
     }
 }
 
+/*
+ * Example:
+ *  px1 px2 px3     px7 px8 px9
+ *  px4 px5 px6 --> px4 px5 px6
+ *  px7 px8 px9     px1 px2 px3
+ *
+ */
 void flip_image_vertically(png_bytepp data, png_bytepp out, int bytes_per_pixel) {
     for (int y = 0; y < height; y++) {
         png_bytep row = data[y];
