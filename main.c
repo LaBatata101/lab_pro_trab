@@ -48,17 +48,30 @@ int main(void) {
 
     if (is_png(input_filename)) {
         data = read_png_file(file);
-        // allocate space for the PNG output image
-        out = (png_bytep*)malloc(sizeof(png_bytep) * height);
-        for(int y = 0; y < height; y++) {
-            out[y] = (png_byte*)malloc(rowbytes_size);
+        if (width == height) {
+            // allocate space for the PNG output image
+            out = (png_bytepp)malloc(sizeof(png_bytep) * height);
+            for(int y = 0; y < height; y++) {
+                out[y] = (png_bytep)malloc(rowbytes_size);
+            }
+        } else {
+            out = (png_bytepp)malloc(sizeof(png_bytep) * width);
+            for (int y = 0; y < width; y++)
+                out[y] = (png_bytep)malloc(height * 4);
         }
     } else {
         data = read_jpeg_file(file);
-        // allocate space for the JPEG output image
-        out = (unsigned char **) malloc(height*sizeof(unsigned char **));
-        for (int y = 0; y < height; y++){
-            out[y] = malloc(width*3);
+        if (width == height) {
+            // allocate space for the JPEG output image
+            out = (unsigned char **) malloc(height*sizeof(unsigned char **));
+            for (int y = 0; y < height; y++){
+                out[y] = malloc(width*3);
+            }
+        } else {
+            out = (unsigned char **) malloc(width*sizeof(unsigned char **));
+            for (int y = 0; y < height; y++){
+                out[y] = malloc(height*3);
+            }
         }
     }
 
@@ -222,7 +235,9 @@ png_bytepp read_png_file(FILE *file) {
  * Write the PNG image contents to disk
  */
 void write_png_file(FILE *file, png_bytepp data) {
+    int out_height, out_width;
     png_structp png = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
+
     if (png == NULL) {
         fclose(file);
         printf("ERRO: creating write_struct\n");
@@ -246,11 +261,18 @@ void write_png_file(FILE *file, png_bytepp data) {
     }
 
     png_init_io(png, file);
+    if (width == height) {
+        out_height = height;
+        out_width = width;
+    } else {
+        out_height = width;
+        out_width = height;
+    }
     // set image header information in info
     png_set_IHDR(
             png,
             info,
-            width, height,
+            out_width, out_height,
             8,
             PNG_COLOR_TYPE_RGBA,
             PNG_INTERLACE_NONE,
@@ -260,7 +282,7 @@ void write_png_file(FILE *file, png_bytepp data) {
     png_write_image(png, data);
     png_write_end(png, NULL);
 
-    for (int y = 0; y < height; y++) 
+    for (int y = 0; y < out_height; y++) 
         free(data[y]);
 
     free(data);
@@ -291,11 +313,10 @@ void get_user_input(char *str, int size) {
  *    px7 px8 px9     px9 px6 px3
  */
 void rotate_image_clockwise(png_bytepp data, png_bytepp out, int bytes_per_pixel) {
-    for (int y = 0; y < height; y++) {
-        png_bytep row = data[y];
-        for (int x = 0; x < width; x++) {
-            png_bytep pixel = &(row[x*bytes_per_pixel]);
-            png_bytep out_pixel = &(out[x][(height-y-1)*bytes_per_pixel]);
+    for (int y = 0; y < width; y++) {
+        for (int x = 0; x < height; x++) {
+            png_bytep pixel = &(data[x][y*bytes_per_pixel]);
+            png_bytep out_pixel = &(out[y][(height-1-x)*bytes_per_pixel]);
 
             copy_array(out_pixel, pixel, bytes_per_pixel);
         }
@@ -310,11 +331,10 @@ void rotate_image_clockwise(png_bytepp data, png_bytepp out, int bytes_per_pixel
  *
  */
 void rotate_image_anticlockwise(png_bytepp data, png_bytepp out, int bytes_per_pixel) {
-    for (int y = 0; y < height; y++) {
-        png_bytep row = data[y];
-        for (int x = 0; x < width; x++) {
-            png_bytep pixel = &(row[x*bytes_per_pixel]);
-            png_bytep out_pixel = &(out[width-x-1][y*bytes_per_pixel]);
+    for (int y = 0; y < width; y++) {
+        for (int x = 0; x < height; x++) {
+            png_bytep pixel = &(data[x][(width-1-y)*bytes_per_pixel]);
+            png_bytep out_pixel = &(out[y][x*bytes_per_pixel]);
 
             copy_array(out_pixel, pixel, bytes_per_pixel);
         }
@@ -476,8 +496,13 @@ void write_jpeg_file(FILE *file, unsigned char **out) {
 	jpeg_create_compress(&cinfo);
 	jpeg_stdio_dest(&cinfo, file);
 
-	cinfo.image_width = width;	
-	cinfo.image_height = height;
+    if (width == height) {
+        cinfo.image_width = width;    
+        cinfo.image_height = height;
+    } else {
+        cinfo.image_width = height;    
+        cinfo.image_height = width;
+    }
 	cinfo.input_components = 3;   /* or 1 for GRACYSCALE images */
 	cinfo.in_color_space = JCS_RGB; /* or JCS_GRAYSCALE for grayscale images */
 
