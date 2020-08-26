@@ -1,5 +1,6 @@
-res/lena_copia.png
+*.png
+*.jpg
+res/*.png
+res/*.jpg
 image
 main
-out.png
-out.jpg
