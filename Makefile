@@ -1,4 +1,4 @@
-PROJ_NAME=sim
+PROJ_NAME=simp
 
 # .c files
 
@@ -35,7 +35,6 @@ objFolder:
 	mkdir -p build
 
 clean:
-	$(RM) ./build/*.o $(PROJ_NAME) *~
-	rmdir build
+	@ $(RM) ./src/*.o $(PROJ_NAME) *~
 
 .PHONY: all clean
