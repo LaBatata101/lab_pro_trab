@@ -12,7 +12,7 @@
 - Rotate image 90 degres to the rigth
 - Mirror image vertically
 - Mirror image horizontally
-- Turn image colors to gray scalar 
+- Turn image colors to greyscalar 
 
 ## Executing:
 `$ ./simp` use the option `--help` to get the help text.
